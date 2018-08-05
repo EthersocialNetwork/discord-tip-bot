@@ -1,0 +1,17 @@
+{
+	"botName": "DiscordTipBot",
+	"ticker": "ETC",
+	"etherUnit": "ETC",
+	"etherMax": 10,
+	"rpchost": "http://localhost:9545",
+	"blockExplorerTx": "",
+	"blockExplorerAddr": "",
+	"chainId": 31102,
+	"hdPath": "m/44'/61'/0'/0",
+	"bip39words": "bip39-words.txt",
+	"tokenList": "./data/tokens.json",
+	"address": "",
+	"token": "",
+	"path": "data/users.json",
+	"prefix": "/"
+}

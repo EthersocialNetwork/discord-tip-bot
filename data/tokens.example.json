@@ -1,0 +1,9 @@
+[
+  {
+    "address": "0x0000000000000000000000000000000000000000",
+    "symbol": "STO",
+    "name": "SampleToken",
+    "decimal": 18,
+    "type": "default"
+  }
+]
