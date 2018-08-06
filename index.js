@@ -108,7 +108,7 @@ function sendCoins(fromId, toId, value, unit, message, name) {
 
 			web3.eth.sendSignedTransaction(rawTx, function(err, hash) {
 				if (err) {
-					message.channel.send("Fail to send to " + name);
+					message.channel.send("Fail to send to " + name + ": " + err);
 					return;
 				}
 				message.channel.send("Tip was sent.\nCheck TX hash: " + Settings.blockExplorerTx + hash);
@@ -329,8 +329,7 @@ bot.on('message',async message => {
 				return message.channel.send("You are not registered user.");
 			}
 		} else {
-			console.log(users);
-			fromId = users['@admin'].uid;
+			fromId = users[author].uid;
 		}
 		let username = args[1];
 		let amount = Number(args[2]);
@@ -508,7 +507,7 @@ bot.on('message',async message => {
 			var current = data["@id"];
 			if (!Object.keys(data).includes(author)) {
 				var newId = current + 1;
-				data[author] = { id: newId, name: message.author.username };
+				data[author] = { uid: newId, name: message.author.username };
 				data["@id"] = newId;
 
 				const hdkey = prepareHDKey();
@@ -516,7 +515,7 @@ bot.on('message',async message => {
 				const hd = hdkey.derive(hdPath);
 				let address = getAddress(hd);
 
-				message.channel.send("@" + message.author.username + " registred. your address is `" + address + "`");
+				message.channel.send("<@" + message.author.id + "> registred. your address is `" + address + "`");
 				fs.writeFile(Settings.path, JSON.stringify(data, null, 2), (err) => {
 					if (err) throw err;
 					console.log('users.json file has been saved.');
@@ -560,7 +559,7 @@ bot.on('message',async message => {
 		let author = message.author.id;
 		let data = getJson('data/users.json');
 		if (Object.keys(data).includes(author)) {
-			message.channel.send("@"+author + " already registered.");
+			message.channel.send("<@"+author + "> already registered.");
 		} else {
 			message.channel.send("You are not in the list, use **" + prefix + register + "** command first.");
 		}
