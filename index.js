@@ -87,6 +87,11 @@ showAdminWallet();
 function sendCoins(fromId, toId, value, unit, message, name) {
 	var users = getJson('data/users.json');
 
+	if (value < Settings.etherMin * Math.pow(10, 18)) {
+		return message.channel.send("Too small amount. minimal amount is " + Settings.etherMin);
+	}
+
+	console.log("sendCoins >> fromId = " + fromId + " / toId = " + toId);
 	if (typeof fromId === 'number') {
 		let toAddress;
 		if (typeof toId === 'number') {
@@ -154,9 +159,10 @@ function getTokenBalance(address, unit, message) {
 	var token = new web3.eth.Contract(ERC20ABI, tokenAddress, {from: address });
 	var data = token.methods.balanceOf(address).call(function(err, balance) {
 		if (err) {
-			message.author.send("Failt to get " + unit + " token balance.");
+			message.author.send("Fail to get " + unit + " token balance.");
 			return;
 		}
+		console.log("balance = ", balance);
 		var value = new BigNumber(balance).dividedBy(KnownTokenDecimalDivisors[unit]);
 		message.channel.send(`Current ${unit} balance for \`${address}\`: **${value}** ${unit}`);
 	});
@@ -182,7 +188,8 @@ function sendRawTransaction(fromId, to, value, unit, message, callback) {
 	}
 
 	const txParams = {
-		gasPrice: "0x0861c46800",
+		//gasPrice: "0x0861c46800", // 0x4e3b29200 36,000,000,000
+		gasPrice: "0x4e3b29200", // 2,100,000,000
 		gasLimit,
 		to,
 		value: value,
@@ -274,6 +281,39 @@ function getMnemonic(path) {
 	return decoded.trim().split(/\s+/g).join(' ');
 }
 
+function register(id, message) {
+	var data = getJson('data/users.json');
+	var current = data["@id"];
+	var user = bot.users.find('id', id);
+	if (!user) {
+		return message.channel.send("<@" + id + "> user not found");
+	}
+	if (!data[id]) {
+		var newId = current + 1;
+		data[id] = { uid: newId, name: user.username };
+		data["@id"] = newId;
+
+		const hdkey = prepareHDKey();
+		const hdPath = getHdPath(hdkey, 0, newId); // type == 0 : external, type == 1 : internal
+		const hd = hdkey.derive(hdPath);
+		let address = getAddress(hd);
+
+		fs.writeFile(Settings.path, JSON.stringify(data, null, 2), (err) => {
+			if (err) throw err;
+			console.log('users.json file has been saved.');
+		});
+		return message.channel.send("<@" + id + "> registred. address is `" + address + "`");
+	} else {
+		var user = data[id];
+		const hdkey = prepareHDKey();
+		const hdPath = getHdPath(hdkey, 0, user.uid); // type == 0 : external, type == 1 : internal
+		const hd = hdkey.derive(hdPath);
+		let address = getAddress(hd);
+
+		return message.channel.send("<@" + id + "> is already registered. address is `" + address + "`");
+	}
+}
+
 bot.on('message',async message => {
 	// Not admins cannot use bot in general channel
 	if (message.channel.name === 'general' && !message.member.hasPermission('ADMINISTRATOR')) return;
@@ -322,18 +362,73 @@ bot.on('message',async message => {
 		let author = message.author.id;
 		let users = getJson('data/users.json');
 		let fromId, toId;
+
+		let username = args[1];
+		let amount = args[2];
+		let unit = args[3] || Settings.ticker;
+
 		if (!message.member.hasPermission('ADMINISTRATOR')) {
 			if (users[author]) {
 				fromId = users[author].uid;
+			} else if (Settings.autoRegister) {
+				return register(author, message);
 			} else {
 				return message.channel.send("You are not registered user.");
 			}
+			amount = Number(amount);
 		} else {
-			fromId = users[author].uid;
+			if (Settings.adminWallet) {
+				if (Settings.adminWallet == '@me') {
+					fromId = users[author].uid;
+				} else if (users[Settings.adminWallet]) {
+					fromId = users[Settings.adminWallet].uid;
+				}
+			}
+			if (!fromId) {
+				fromId = users[author].uid;
+			}
+
+			if (amount.indexOf('@') > 0) {
+				// admin user can extract others wallet.
+				// /send @foobar 10.11@foo
+				var val, at;
+				if (amount.indexOf('<@') > 0) {
+					val = amount.substr(0, amount.indexOf('<@'));
+					at = amount.substr(amount.indexOf('<@'));
+					at = at.substr(2, at.length - 3);
+				} else {
+					val = amount.substr(0, amount.indexOf('@'));
+					at = amount.substr(amount.indexOf('@') + 1);
+				}
+				console.log('amount = ' + amount + " / fromId = " + fromId);
+				console.log('val = ' + val + " / at = " + at);
+
+				// special case, @admin wallet, @fund wallet
+				if (at == 'admin' && users['@admin']) {
+					fromId = users['@admin'].uid;
+				} else if (at == 'fund' && users['@fund']) {
+					fromId = users['@admin'].uid;
+				} else if (at == 'me' && users[author]) {
+					fromId = users[author].uid;
+				} else if (at) {
+					var by;
+					// seek others wallet
+					if (at.match(/^[0-9]+$/)) {
+						by = bot.users.find('id', at);
+					} else {
+						by = bot.users.find('username', at);
+					}
+					if (users[by.id]) {
+						fromId = users[by.id].uid;
+					} else {
+						return message.channel.send(`User <@${by.id}> not found.`);
+					}
+				}
+				amount = Number(val);
+			} else {
+				amount = Number(amount);
+			}
 		}
-		let username = args[1];
-		let amount = Number(args[2]);
-		let unit = args[3] || Settings.ticker;
 
 		if (unit !== Settings.ticker) {
 			// check valid token name
@@ -353,19 +448,33 @@ bot.on('message',async message => {
 			msg = "You are trying to send " + amount + " " + unit + " to `" + username + "`";
 		} else {
 			let toUser;
-			if (username[0] == '<' &&username[1] == '@') {
-				let userId = username.substr(2, username.length - 3);
-				console.log("userId = " + userId);
+			if (username[0] == '<' && username[1] == '@') {
+				let userId;
+				if (username[2] == '!') {
+					userId = username.substr(3, username.length - 4);
+				} else {
+					userId = username.substr(2, username.length - 3);
+				}
+				console.log("userId = " + userId + " " + username);
 				toUser = bot.users.find('id', userId);
 			} else {
 				toUser = bot.users.find('username', username);
 			}
-			if (toUser && users[toUser.id]) {
-				toId = users[toUser.id].uid;
-				console.log("toId = " + toId);
-				username = toUser.username;
+			if (toUser) {
+				if (!users[toUser.id] && Settings.autoRegister) {
+					register(toUser.id, message);
+					// reload again
+					users = getJson('data/users.json');
+				}
+				if (users[toUser.id]) {
+					toId = users[toUser.id].uid;
+					console.log("toId = " + toId);
+					username = toUser.username;
+				} else {
+					return message.channel.send(username + " is not registered user.");
+				}
 			} else {
-				return message.channel.send("@" + username + " is not registered user.");
+				return message.channel.send(username + " is not found.");
 			}
 			msg = "You are trying to send " + amount + " " + unit + " to <@" + toUser.id + ">";
 		}
@@ -503,32 +612,7 @@ bot.on('message',async message => {
 		var author = message.author.id;
 
 		if (true) {
-			var data = getJson('data/users.json');
-			var current = data["@id"];
-			if (!Object.keys(data).includes(author)) {
-				var newId = current + 1;
-				data[author] = { uid: newId, name: message.author.username };
-				data["@id"] = newId;
-
-				const hdkey = prepareHDKey();
-				const hdPath = getHdPath(hdkey, 0, newId); // type == 0 : external, type == 1 : internal
-				const hd = hdkey.derive(hdPath);
-				let address = getAddress(hd);
-
-				message.channel.send("<@" + message.author.id + "> registred. your address is `" + address + "`");
-				fs.writeFile(Settings.path, JSON.stringify(data, null, 2), (err) => {
-					if (err) throw err;
-					console.log('users.json file has been saved.');
-				});
-			} else {
-				var user = data[author];
-				const hdkey = prepareHDKey();
-				const hdPath = getHdPath(hdkey, 0, newId); // type == 0 : external, type == 1 : internal
-				const hd = hdkey.derive(hdPath);
-				let address = getAddress(hd);
-
-				message.channel.send("You have already registered. your address is `" + address + "`");
-			}
+			register(author, message);
 		}
 		//var address = args[1];
 		//if (web3.utils.isAddress(args[1])) {
@@ -555,6 +639,22 @@ bot.on('message',async message => {
 		message.channel.send("Total registered users is **" + Object.keys(data).length + "**.");
 	}
 
+	if (message.content.startsWith(prefix + "tx ")) {
+		let txhash = args[1];
+		web3.eth.getTransaction(txhash, function(err, tx) {
+			if (err) {
+				console.log(err);
+				message.channel.send("Fail to get tx: " + err);
+				return;
+			}
+			let icon = ':ok_hand:';
+			if (!tx.blockNumber) {
+				icon = ':sleeping:';
+			}
+			message.channel.send(`${icon} - TX \`${tx.hash}\`, from: \`${tx.from}\`, to: \`${tx.to}\` at blockNumber \`${tx.blockNumber}\`.`);
+		});
+	}
+
 	if (message.content == prefix + "checkRegister") {
 		let author = message.author.id;
 		let data = getJson('data/users.json');
@@ -569,6 +669,7 @@ bot.on('message',async message => {
 		message.channel.send(Settings.botName + " commands:\n"+
 			"**" + prefix + "balance** *<address>* - show " + Settings.ticker + " balance on the following address.\n" +
 			"**" + prefix + "balance** - show " + Settings.ticker + " balance of yours. \n" +
+			"**" + prefix + "tx** - show *<txhash>*. \n" +
 			//"**"+prefix+"sendToAddress** *<address>* *<amount>* - send " + Settings.ticker + " to the following address (Admin Only)\n"+
 			"**" + prefix + "send** *<name|address>* *<amount>* send " + Settings.ticker + " to the following user/address\n" +
 			"**" + prefix + "withdraw** *<address>* *<amount>* withdraw " + Settings.ticker + " to the following address\n" +
