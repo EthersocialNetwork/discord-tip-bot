@@ -53,17 +53,27 @@ function getHdPath(hdkey, type, userId) {
 	return `${path}/${type}/${userId}`;
 }
 
-function getAddress(hdkey) {
-	//console.log(hd);
+function _getAddress(hdkey) {
 	var addressBuffer = Util.privateToAddress(hdkey._privateKey);
 	return '0x' + addressBuffer.toString('hex');
 }
 
-async function showAdminWallet() {
+function getAddress(uid) {
 	const hdkey = prepareHDKey();
-	const toHdPath = getHdPath(hdkey, 0, 0); // type == 0 : external, type == 1 : internal
-	const toHd = hdkey.derive(toHdPath);
-	const toAddress = getAddress(toHd);
+	const hdPath = getHdPath(hdkey, 0, uid); // type == 0 : external, type == 1 : internal
+	const hd = hdkey.derive(hdPath);
+	return _getAddress(hd);
+}
+
+function getPrivateKey(uid) {
+	const hdkey = prepareHDKey();
+	const hdPath = getHdPath(hdkey, 0, uid); // type == 0 : external, type == 1 : internal
+	const hd = hdkey.derive(hdPath);
+	return hd._privateKey;
+}
+
+async function showAdminWallet() {
+	const toAddress = getAddress(0);
 	let balance = await web3.eth.getBalance(toAddress) / Math.pow(10, 18);
 	console.log("Admin wallet = " + toAddress + ": " + balance + " " + Settings.ticker);
 }
@@ -84,10 +94,10 @@ bot.on('ready', ()=>{
 // show admin wallet
 showAdminWallet();
 
-function sendCoins(fromId, toId, value, unit, message, name) {
+function sendCoins(fromId, toId, wei, unit, message, name) {
 	var users = getJson('data/users.json');
 
-	if (value < Settings.etherMin * Math.pow(10, 18)) {
+	if (wei < Settings.etherMin * Math.pow(10, 18)) {
 		return message.channel.send("Too small amount. minimal amount is " + Settings.etherMin);
 	}
 
@@ -95,17 +105,14 @@ function sendCoins(fromId, toId, value, unit, message, name) {
 	if (typeof fromId === 'number') {
 		let toAddress;
 		if (typeof toId === 'number') {
-			const hdkey = prepareHDKey();
-			const toHdPath = getHdPath(hdkey, 0, toId); // type == 0 : external, type == 1 : internal
-			const toHd = hdkey.derive(toHdPath);
-			toAddress = getAddress(toHd);
+			toAddress = getAddress(toId);
 		} else {
 			// normal address
 			toAddress = toId;
 		}
 		console.log("sendCoins >> toId = " + toId + " / toAddress = " + toAddress);
 
-		sendRawTransaction(fromId, toAddress, value, unit, message, function(err, rawTx) {
+		sendRawTransaction(fromId, toAddress, wei, unit, message, function(err, rawTx) {
 			if (err) {
 				message.channel.send("Fail to send to " + name);
 				return;
@@ -116,38 +123,18 @@ function sendCoins(fromId, toId, value, unit, message, name) {
 					message.channel.send("Fail to send to " + name + ": " + err);
 					return;
 				}
-				message.channel.send("Tip was sent.\nCheck TX hash: " + Settings.blockExplorerTx + hash);
+				message.channel.send(":tada: <@" + message.author.id + "> sent tip.\nTX hash: `" + hash + "`");
 				if (typeof name != "undefined") {
 					let toUser = bot.users.find('username', name);
 					if (toUser) {
-						toUser.send("Hi " + toUser.username + ", you are lucky.\nCheck TX hash: " + Settings.blockExplorerTx + hash);
+						toUser.send(":tada: Hi, you are lucky! <@" + message.author.id + "> sent tip to you.\nTX hash: `" + hash + "`");
 					} else {
-						message.author.send("Check TX hash: " + Settings.blockExplorerTx + hash);
+						message.author.send("Check TX hash: `" + hash + "`");
 					}
 				}
 			});
 		});
 	}
-
-	//web3.eth.sendTransaction({
-	//    from: Settings.address,
-	//    to: address,
-	//    gas: web3.utils.toHex(120000),
-	//    value: value
-	//})
-	//.on('transactionHash', function(hash) {
-	//	// sent pm with their tx
-	//	// recive latest array
-	//	if (name != 1) {
-	//		let author = bot.users.find('username',name);
-	//		author.send("Hi "+name+" , you are lucky man.\n Check hash: " + Settings.blockExplorerTx + hash);
-	//	} else {
-	//		message.channel.send("Tip was sent. \n Check hash: " + Settings.blockExplorerTx + hash)
-	//	}
-	//
-	//
-	//})
-	//.on('error', console.error);
 }
 
 function getTokenBalance(address, unit, message) {
@@ -168,13 +155,8 @@ function getTokenBalance(address, unit, message) {
 	});
 }
 
-function sendRawTransaction(fromId, to, value, unit, message, callback) {
-	const hdkey = prepareHDKey();
-	const hdPath = getHdPath(hdkey, 0, fromId); // type == 0 : external, type == 1 : internal
-	const hd = hdkey.derive(hdPath);
-	let address = getAddress(hd);
-
-	console.log("hdPath = " + hdPath + " / fromAddress = " + address);
+function sendRawTransaction(fromId, to, wei, unit, message, callback) {
+	let address = getAddress(fromId);
 
 	let data = '0x';
 	let gasLimit = "0x015f90";
@@ -182,7 +164,8 @@ function sendRawTransaction(fromId, to, value, unit, message, callback) {
 		gasLimit = "0x250CA";
 		const tokenAddress = KnownTokenInfo[unit].address;
 		var token = new web3.eth.Contract(ERC20ABI, tokenAddress, {from: address });
-		data = token.methods.transfer(to, value).encodeABI();
+		// FIXME wei to token unit FIXME
+		data = token.methods.transfer(to, wei).encodeABI();
 		to = tokenAddress;
 		value = "0x0";
 	}
@@ -192,7 +175,7 @@ function sendRawTransaction(fromId, to, value, unit, message, callback) {
 		gasPrice: "0x4e3b29200", // 2,100,000,000
 		gasLimit,
 		to,
-		value: value,
+		value: wei,
 		data,
 		chainId: Settings.chainId
 	};
@@ -205,7 +188,7 @@ function sendRawTransaction(fromId, to, value, unit, message, callback) {
 		txParams.nonce = nonce;
 
 		const tx = new Tx(txParams);
-		tx.sign(hd._privateKey);
+		tx.sign(getPrivateKey(fromId));
 		const serializedTx = tx.serialize();
 
 		var ret = tx.verifySignature();
@@ -281,7 +264,15 @@ function getMnemonic(path) {
 	return decoded.trim().split(/\s+/g).join(' ');
 }
 
-function register(id, message) {
+function getRegisterUserInfo(user) {
+	let users = getJson('data/users.json');
+	if (users[user.id]) {
+		return users[user.id];
+	}
+	return null;
+}
+
+async function register(id, message) {
 	var data = getJson('data/users.json');
 	var current = data["@id"];
 	var user = bot.users.find('id', id);
@@ -293,35 +284,67 @@ function register(id, message) {
 		data[id] = { uid: newId, name: user.username };
 		data["@id"] = newId;
 
-		const hdkey = prepareHDKey();
-		const hdPath = getHdPath(hdkey, 0, newId); // type == 0 : external, type == 1 : internal
-		const hd = hdkey.derive(hdPath);
-		let address = getAddress(hd);
+		let address = getAddress(newId);
 
 		fs.writeFile(Settings.path, JSON.stringify(data, null, 2), (err) => {
 			if (err) throw err;
 			console.log('users.json file has been saved.');
+			message.channel.send("<@" + id + "> registred. address is `" + address + "`");
+			return newId;
 		});
-		return message.channel.send("<@" + id + "> registred. address is `" + address + "`");
 	} else {
 		var user = data[id];
-		const hdkey = prepareHDKey();
-		const hdPath = getHdPath(hdkey, 0, user.uid); // type == 0 : external, type == 1 : internal
-		const hd = hdkey.derive(hdPath);
-		let address = getAddress(hd);
+		let address = getAddress(user.uid);
 
-		return message.channel.send("<@" + id + "> is already registered. address is `" + address + "`");
+		message.channel.send("<@" + id + "> is already registered. address is `" + address + "`");
+		return user.uid;
 	}
 }
 
+function getUser(username, bot) {
+	let user;
+	if (username[0] == '<' && username[1] == '@') {
+		let id;
+		if (username[2] == '!') {
+			id = username.substr(3, username.length - 4);
+		} else {
+			id = username.substr(2, username.length - 3);
+		}
+		console.log("userId = " + id + " " + username);
+		user = bot.users.find('id', id);
+	} else {
+		user = bot.users.find('username', username);
+	}
+	return user;
+}
+
+var allowedDmCommands = [prefix + 'balance', prefix + 'getaddress', prefix + 'tx', prefix + 'help'];
+var allowedCommands = [prefix + 'balance', prefix + 'getaddress', prefix + 'tx', prefix + 'send', prefix + 'withdraw',
+	prefix + 'register', prefix + 'checkRegister', prefix + 'list', prefix + 'help'];
+
+
 bot.on('message',async message => {
+	if (message.author.bot) return; // ignore bot authors
+
+	let args = message.content.split(/[ ]+/);
+	let hasCommandPrefix = args[0] && args[0].startsWith(prefix);
+
+	if (!hasCommandPrefix) {
+		return;
+	}
+
 	// Not admins cannot use bot in general channel
-	if (message.channel.name === 'general' && !message.member.hasPermission('ADMINISTRATOR')) return;
-	if (message.author.bot) return;
-	if (message.channel.type === "dm") return;
+	if (message.channel.name === 'general' &&
+			args[0].indexOf(allowedCommands) > -1 && !message.member.hasPermission('ADMINISTRATOR')) {
+		return message.channel.send("Sorry, you have no permission to use `" + args[0] + "` command at the #genernal channel.");
+	}
 
 	var message = message;
-	let args = message.content.split(' ');
+
+	if (message.channel.type === "dm" &&
+			args[0].indexOf(allowedCommands) > -1 && args[0].indexOf(allowedDmCommands) === -1) {
+		return message.channel.send("Sorry, You are not allowed to use `" + args[0] + "` command.");
+	}
 
 	if (message.content.startsWith(prefix + "withdraw ")) {
 		let author = message.author.id;
@@ -367,10 +390,12 @@ bot.on('message',async message => {
 		let amount = args[2];
 		let unit = args[3] || Settings.ticker;
 
-		if (!message.member.hasPermission('ADMINISTRATOR')) {
+		let isAdmin = message.member && message.member.hasPermission('ADMINISTRATOR');
+
+		if (!isAdmin) {
 			if (users[author]) {
 				fromId = users[author].uid;
-			} else if (Settings.autoRegister) {
+			} else if (message.channel.type !== 'dm' && Settings.autoRegister) {
 				return register(author, message);
 			} else {
 				return message.channel.send("You are not registered user.");
@@ -447,34 +472,23 @@ bot.on('message',async message => {
 			toId = username;
 			msg = "You are trying to send " + amount + " " + unit + " to `" + username + "`";
 		} else {
-			let toUser;
-			if (username[0] == '<' && username[1] == '@') {
-				let userId;
-				if (username[2] == '!') {
-					userId = username.substr(3, username.length - 4);
-				} else {
-					userId = username.substr(2, username.length - 3);
+			let toUser = getUser(username, bot);
+			if (toUser && !toUser.bot) {
+				if (!users[toUser.id] && message.channel.type !== 'dm' && Settings.autoRegister) {
+					toId = await register(toUser.id, message);
+					username = toUser.username;
 				}
-				console.log("userId = " + userId + " " + username);
-				toUser = bot.users.find('id', userId);
-			} else {
-				toUser = bot.users.find('username', username);
-			}
-			if (toUser) {
-				if (!users[toUser.id] && Settings.autoRegister) {
-					register(toUser.id, message);
-					// reload again
-					users = getJson('data/users.json');
-				}
-				if (users[toUser.id]) {
+				if (!toId && users[toUser.id]) {
 					toId = users[toUser.id].uid;
 					console.log("toId = " + toId);
 					username = toUser.username;
 				} else {
 					return message.channel.send(username + " is not registered user.");
 				}
+			} else if (toUser.bot) {
+				return message.channel.send(":broken_heart: You can't send to bot.");
 			} else {
-				return message.channel.send(username + " is not found.");
+				return message.channel.send(":broken_heart: " + username + " is not found.");
 			}
 			msg = "You are trying to send " + amount + " " + unit + " to <@" + toUser.id + ">";
 		}
@@ -516,13 +530,31 @@ bot.on('message',async message => {
 	if (message.content.startsWith(prefix + "balance")) {
 		let price = getJson('data/usdprice.txt');
 		let author = message.author.id;
-		let address = args[1];
-		let unit = args[2] || Settings.ticker;
+		let address, unit;
 
-		// /balance DDT => show balanceOf DDT token
-		if (!web3.utils.isAddress(address)) {
-			unit = address;
-			address = null;
+		// /balance : show my balance
+		// /balance DDT => show balanceOf() DDT token
+		// /balance @user : admin only
+		while (args[1]) {
+			if (!address && web3.utils.isAddress(args[1])) {
+				address = args[1];
+			} else if (!unit && (KnownTokenInfo[args[1]] || args[1] == Settings.ticker)) {
+				unit = args[1];
+			} else if (!address) {
+				var user = getUser(args[1], bot);
+				if (user) {
+					var i = getRegisterUserInfo(user);
+					if (i !== null) {
+						address = getAddress(i.uid);
+					}
+				} else {
+					return message.channel.send("<@" + user.id + "> is not registerd.");
+				}
+			} else {
+				return message.channel.send("not recognized argument " + args[1] + ".");
+			}
+
+			args.shift();
 		}
 
 		if (address == null) {
@@ -530,10 +562,7 @@ bot.on('message',async message => {
 			let data = getJson('data/users.json');
 			if (data[author]) {
 				var user = data[author];
-				const hdkey = prepareHDKey();
-				const hdPath = getHdPath(hdkey, 0, user.uid); // type == 0 : external, type == 1 : internal
-				const hd = hdkey.derive(hdPath);
-				let address = getAddress(hd);
+				let address = getAddress(user.uid);
 
 				web3.eth.getBalance(address, (error,result) => {
 					if (!error) {
@@ -563,7 +592,7 @@ bot.on('message',async message => {
 					}
 				});
 
-				if (unit != Settings.etherUnit) {
+				if (unit && unit != Settings.etherUnit) {
 					getTokenBalance(address, unit, message);
 				}
 			}
@@ -572,14 +601,18 @@ bot.on('message',async message => {
 				if (!error) {
 					var balance = (result / Math.pow(10, 18)).toFixed(3);
 					if (balance == 0) {
-						message.channel.send(`This balance empty, it has: **${balance}** ${Settings.ticker}. Address: ${Settings.blockExplorerAddr}${address}.`);
+						message.channel.send(`This balance empty, it has: **${balance}** ${Settings.ticker}. Address: \`${address}\`.`);
 					} else {
-						message.channel.send(`Balance is **${balance}** ${Settings.ticker}. Address: ${Settings.blockExplorerAddr}${address}.`);
+						message.channel.send(`Balance is **${balance}** ${Settings.ticker}. Address: \`${address}\`.`);
 					}
 				} else {
 					message.channel.send("Oops, some problem occured with your address.");
 				}
 			});
+
+			if (unit && unit != Settings.etherUnit) {
+				getTokenBalance(address, unit, message);
+			}
 		} else {
 			message.channel.send("Wrong address, try another one.");
 		}
@@ -593,15 +626,12 @@ bot.on('message',async message => {
 		if (users['@admin']) {
 			let adminId = users['@admin'].uid;
 
-			const hdkey = prepareHDKey();
-			const hdPath = getHdPath(hdkey, 0, adminId); // type == 0 : external, type == 1 : internal
-			const hd = hdkey.derive(hdPath);
-			address = getAddress(hd);
+			address = getAddress(adminId);
 		} else {
 			address = Settings.address;
 		}
 		let balance = await web3.eth.getBalance(address) / Math.pow(10, 18);
-		message.channel.send("Bot address is " + Settings.blockExplorerAddr + address + " with: **" + Number(balance).toFixed(3) + "** " + Settings.ticker + ".");
+		message.channel.send("Bot address is `" + address + "` with: **" + Number(balance).toFixed(3) + "** " + Settings.ticker + ".");
 
 		if (unit != Settings.etherUnit) {
 			getTokenBalance(address, unit, message);
