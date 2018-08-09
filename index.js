@@ -160,6 +160,7 @@ function sendRawTransaction(fromId, to, wei, unit, message, callback) {
 
 	let data = '0x';
 	let gasLimit = "0x015f90";
+	let value = wei;
 	if (KnownTokenInfo[unit]) {
 		gasLimit = "0x250CA";
 		const tokenAddress = KnownTokenInfo[unit].address;
@@ -175,7 +176,7 @@ function sendRawTransaction(fromId, to, wei, unit, message, callback) {
 		gasPrice: "0x4e3b29200", // 2,100,000,000
 		gasLimit,
 		to,
-		value: wei,
+		value: value,
 		data,
 		chainId: Settings.chainId
 	};
