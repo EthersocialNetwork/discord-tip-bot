@@ -277,7 +277,8 @@ async function register(id, message) {
 	var current = data["@id"];
 	var user = bot.users.find('id', id);
 	if (!user) {
-		return message.channel.send("<@" + id + "> user not found");
+		message.channel.send("<@" + id + "> user not found");
+		return null;
 	}
 	if (!data[id]) {
 		var newId = current + 1;
@@ -286,12 +287,13 @@ async function register(id, message) {
 
 		let address = getAddress(newId);
 
-		fs.writeFile(Settings.path, JSON.stringify(data, null, 2), (err) => {
+		await fs.writeFileSync(Settings.path, JSON.stringify(data, null, 2), (err) => {
 			if (err) throw err;
+			console.log("newId = " + newId);
 			console.log('users.json file has been saved.');
 			message.channel.send("<@" + id + "> registred. address is `" + address + "`");
-			return newId;
 		});
+		return newId;
 	} else {
 		var user = data[id];
 		let address = getAddress(user.uid);
@@ -482,7 +484,7 @@ bot.on('message',async message => {
 					toId = users[toUser.id].uid;
 					console.log("toId = " + toId);
 					username = toUser.username;
-				} else {
+				} else if (!toId) {
 					return message.channel.send(username + " is not registered user.");
 				}
 			} else if (toUser.bot) {
