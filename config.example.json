@@ -16,5 +16,6 @@
 	"address": "",
 	"token": "",
 	"path": "data/users.json",
-	"prefix": "/"
+	"prefix": "/",
+	"simpleCommand": true
 }

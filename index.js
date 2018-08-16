@@ -321,18 +321,31 @@ function getUser(username, bot) {
 	return user;
 }
 
-var allowedDmCommands = [prefix + 'balance', prefix + 'getaddress', prefix + 'tx', prefix + 'help'];
-var allowedCommands = [prefix + 'balance', prefix + 'getaddress', prefix + 'tx', prefix + 'send', prefix + 'withdraw',
-	prefix + 'register', prefix + 'checkRegister', prefix + 'list', prefix + 'help'];
+var prefixPrefix = prefix[0];
+var allCommands = ['balance', 'getaddress', 'tx', 'send', 'withdraw', 'register', 'checkRegister', 'list', 'help'];
+var dmCommands = ['balance', 'getaddress', 'tx', 'help'];
 
+var allowedCommands = allCommands.map(function(cmd) { return prefix + cmd; });
+var allowedDmCommands = allCommands.map(function(cmd) { return prefix + cmd; });
 
 bot.on('message',async message => {
 	if (message.author.bot) return; // ignore bot authors
 
 	let args = message.content.split(/[ ]+/);
 	let hasCommandPrefix = args[0] && args[0].startsWith(prefix);
+	if (hasCommandPrefix && args[0] === prefix) {
+		args.shift();
+		args[0] = prefix + args[0];
+	}
+	if (Settings.simpleCommand && !hasCommandPrefix && args[0] && args[0].startsWith(prefixPrefix)) {
+		args[0] = prefix + args[0].substr(1);
+		hasCommandPrefix = true;
+	}
 
 	if (!hasCommandPrefix) {
+		return;
+	}
+	if (allowedCommands.indexOf(args[0]) < 0) {
 		return;
 	}
 
@@ -349,7 +362,7 @@ bot.on('message',async message => {
 		return message.channel.send("Sorry, You are not allowed to use `" + args[0] + "` command.");
 	}
 
-	if (message.content.startsWith(prefix + "withdraw ")) {
+	if ((args[0] == prefix + "withdraw") && args[1]) {
 		let author = message.author.id;
 
 		let address = args[1];
@@ -384,7 +397,7 @@ bot.on('message',async message => {
 		}
 	}
 
-	if (message.content.startsWith(prefix + "send ")) {
+	if ((args[0] == prefix + "send") && args[1] && args[2]) {
 		let author = message.author.id;
 		let users = getJson('data/users.json');
 		let fromId, toId;
@@ -488,7 +501,7 @@ bot.on('message',async message => {
 				} else if (!toId) {
 					return message.channel.send(username + " is not registered user.");
 				}
-			} else if (toUser.bot) {
+			} else if (toUser && toUser.bot) {
 				return message.channel.send(":broken_heart: You can't send to bot.");
 			} else {
 				return message.channel.send(":broken_heart: " + username + " is not found.");
@@ -530,7 +543,7 @@ bot.on('message',async message => {
 		},time);
 	}
 
-	if (message.content.startsWith(prefix + "balance")) {
+	if (args[0] == prefix + "balance") {
 		let price = getJson('data/usdprice.txt');
 		let author = message.author.id;
 		let address, unit;
@@ -621,7 +634,7 @@ bot.on('message',async message => {
 		}
 	}
 
-	if (message.content.startsWith(prefix + "getaddress")) {
+	if (args[0] == prefix + "getaddress") {
 		let users = getJson('data/users.json');
 		let address;
 
@@ -641,7 +654,7 @@ bot.on('message',async message => {
 		}
 	}
 
-	if (message.content.startsWith(prefix+"register")) {
+	if (args[0] == prefix+"register") {
 		var author = message.author.id;
 
 		if (true) {
@@ -667,12 +680,12 @@ bot.on('message',async message => {
 		//}
 	}
 
-	if (message.content == prefix + "list") {
+	if (args[0] == prefix + "list") {
 		var data = getJson('data/users.json');
 		message.channel.send("Total registered users is **" + Object.keys(data).length + "**.");
 	}
 
-	if (message.content.startsWith(prefix + "tx ")) {
+	if (args[0] == prefix + "tx" && args[1]) {
 		let txhash = args[1];
 		web3.eth.getTransaction(txhash, function(err, tx) {
 			if (err) {
@@ -688,7 +701,7 @@ bot.on('message',async message => {
 		});
 	}
 
-	if (message.content == prefix + "checkRegister") {
+	if (args[0] == prefix + "checkRegister") {
 		let author = message.author.id;
 		let data = getJson('data/users.json');
 		if (Object.keys(data).includes(author)) {
@@ -698,21 +711,25 @@ bot.on('message',async message => {
 		}
 	}
 
-	if (message.content === prefix + "help") {
+	if (args[0] === prefix + "help") {
+		var space = '';
+		if (prefix.length > 1) {
+			space = ' ';
+		}
 		message.channel.send(Settings.botName + " commands:\n"+
-			"**" + prefix + "balance** *<address>* - show " + Settings.ticker + " balance on the following address.\n" +
-			"**" + prefix + "balance** - show " + Settings.ticker + " balance of yours. \n" +
-			"**" + prefix + "tx** - show *<txhash>*. \n" +
+			"**" + prefix + space + "balance** *<address>* - show " + Settings.ticker + " balance on the following address.\n" +
+			"**" + prefix + space + "balance** - show " + Settings.ticker + " balance of yours. \n" +
+			"**" + prefix + space + "tx** - show *<txhash>*. \n" +
 			//"**"+prefix+"sendToAddress** *<address>* *<amount>* - send " + Settings.ticker + " to the following address (Admin Only)\n"+
-			"**" + prefix + "send** *<name|address>* *<amount>* send " + Settings.ticker + " to the following user/address\n" +
-			"**" + prefix + "withdraw** *<address>* *<amount>* withdraw " + Settings.ticker + " to the following address\n" +
+			"**" + prefix + space + "send** *<name|address>* *<amount>* send " + Settings.ticker + " to the following user/address\n" +
+			"**" + prefix + space + "withdraw** *<address>* *<amount>* withdraw " + Settings.ticker + " to the following address\n" +
 			//"**"+prefix+"rain** *<amount>* - send " + Settings.ticker + " to all registered and online address's (Admin Only).\n"+
 			//"**"+prefix+"coming** *<amount>* *<numOfHrs>* - rain will be after N hours (Admin Only). \n"+
-			"**" + prefix + "getaddress** - shows fund address so everyone can fund it.\n" +
+			"**" + prefix + space + "getaddress** - shows fund address so everyone can fund it.\n" +
 			//"**"+prefix+"register** *<address>*  - saves user address and name to db. \n"+
-			"**" + prefix + "register** - register user to db.\n" +
-			"**" + prefix + "checkRegister** - find whether you're registered or not.\n" +
-			"**" + prefix + "list** - shows number of registered users.");
+			"**" + prefix + space + "register** - register user to db.\n" +
+			"**" + prefix + space + "checkRegister** - find whether you're registered or not.\n" +
+			"**" + prefix + space + "list** - shows number of registered users.");
 	}
 })
 
