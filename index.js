@@ -80,7 +80,15 @@ async function showAdminWallet() {
 }
 
 // update price every 5 min
-setInterval(price,300000);
+if (Settings.priceApi) {
+	setInterval(function() {
+		if (Settings.priceApi == 'cmc') {
+			price.getCMCPrice(Settings.cmcId || Settings.ticker);
+		} else if (Settings.priceApi == 'bitz') {
+			price.getBitzPrice(Settings.ticker);
+		}
+	}, 300000);
+}
 
 const prefix = Settings.prefix;
 const bot = new Discord.Client({disableEveryone:true});

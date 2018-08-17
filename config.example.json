@@ -17,5 +17,7 @@
 	"token": "",
 	"path": "data/users.json",
 	"prefix": "/",
-	"simpleCommand": true
+	"simpleCommand": true,
+	"priceApi": "cmc",
+	"cmcId": "ethereum-classic"
 }
