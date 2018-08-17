@@ -1,5 +1,6 @@
 "use strcit";
 
+const async = require('async');
 const Web3 = require("web3");
 const Bip39 = require('bip39');
 const HDKey = require('hdkey')
@@ -112,7 +113,7 @@ function sendCoins(fromId, toId, wei, unit, message, name) {
 		}
 		console.log("sendCoins >> toId = " + toId + " / toAddress = " + toAddress);
 
-		sendRawTransaction(fromId, toAddress, wei, unit, message, function(err, rawTx) {
+		sendRawTransaction(fromId, toAddress, wei, unit, message, function(err, rawTx, sendAllWei) {
 			if (err) {
 				message.channel.send("Fail to send to " + name);
 				return;
@@ -127,7 +128,11 @@ function sendCoins(fromId, toId, wei, unit, message, name) {
 				if (typeof name != "undefined") {
 					let toUser = bot.users.find('username', name);
 					if (toUser) {
-						toUser.send(":tada: Hi, you are lucky! <@" + message.author.id + "> sent tip to you.\nTX hash: `" + hash + "`");
+						var val = wei / 1e18;
+						if (sendAllWei) {
+							val = sendAllWei / 1e18;
+						}
+						toUser.send(":tada: Hi, you are lucky! <@" + message.author.id + "> sent **" + val + "** " + unit + " tip to you.\nTX hash: `" + hash + "`");
 					} else {
 						message.author.send("Check TX hash: `" + hash + "`");
 					}
@@ -158,35 +163,94 @@ function getTokenBalance(address, unit, message) {
 function sendRawTransaction(fromId, to, wei, unit, message, callback) {
 	let address = getAddress(fromId);
 
-	let data = '0x';
-	let gasLimit = "0x015f90";
-	let value = wei;
-	if (KnownTokenInfo[unit]) {
-		gasLimit = "0x250CA";
-		const tokenAddress = KnownTokenInfo[unit].address;
-		var token = new web3.eth.Contract(ERC20ABI, tokenAddress, {from: address });
-		// FIXME wei to token unit FIXME
-		data = token.methods.transfer(to, wei).encodeABI();
-		to = tokenAddress;
-		value = "0x0";
-	}
+	var gasPrice = 2000000000; // 2,000,000,000 0x77359400
+	// minimal gas price ?        2,100,000,000 0x4e3b29200
+	// returned gas price ??     20,000,000,000
+	// gasPrice: "0x0861c46800", // 0x4e3b29200 36,000,000,000
+	var noNonce;
+	var totalBalance;
 
-	const txParams = {
-		//gasPrice: "0x0861c46800", // 0x4e3b29200 36,000,000,000
-		gasPrice: "0x4e3b29200", // 2,100,000,000
-		gasLimit,
-		to,
-		value: value,
-		data,
-		chainId: Settings.chainId
-	};
-
-	web3.eth.getTransactionCount(address, function(err, nonce) {
-		if (err) {
-			callback(err, null);
+	async.waterfall([
+	function(callback) {
+		web3.eth.getGasPrice(function(err, result) {
+			if (err) {
+				return callback(err);
+			}
+			callback(null, result);
+		});
+	}, function(gasprice, callback) {
+		web3.eth.getBalance(address, function(err, result) {
+			if (err) {
+				return callback(err);
+			}
+			callback(null, gasprice, result);
+		});
+	}, function(gasprice, balance, callback) {
+		web3.eth.getTransactionCount(address, "pending", function(err, nonce) {
+			if (err) {
+				return callback(err);
+			}
+			console.log('nonce = ', nonce);
+			callback(null, gasprice, balance, nonce);
+		});
+	}], function(error, gasprice, balance, nonce) {
+		if (error) {
+			return callback(error);
 		}
-		console.log('nonce = ', nonce);
-		txParams.nonce = nonce;
+		//gasPrice = gasprice > gasPrice ? gasprice : gasPrice;
+		console.log("returned gasPrice = " + gasprice);
+		totalBalance = balance;
+
+		let data = '0x';
+		//let gasLimit = "0x5208";
+		//let gasLimit = "0x015f90";
+		//let gasLimit = 90000;// mist case
+		let gasLimit = 21000;
+		let value = wei;
+		if (KnownTokenInfo[unit]) {
+			gasLimit = 160000;
+			const tokenAddress = KnownTokenInfo[unit].address;
+			var token = new web3.eth.Contract(ERC20ABI, tokenAddress, {from: address });
+			// FIXME wei to token unit FIXME
+			data = token.methods.transfer(to, wei).encodeABI();
+			to = tokenAddress;
+			value = "0x0";
+		} else {
+			// coin transfer
+			var sendAll = false;
+			console.log("totalBalance = " + totalBalance);
+			if (value == totalBalance) {
+				sendAll = true;
+			} else {
+				var diff = totalBalance - value;
+				diff = diff < 0 ? -diff : diff;
+				if (diff < 800000000000) {
+					// almost same
+					sendAll = true;
+				}
+			}
+
+			if (sendAll) {
+				var sendAllValue = totalBalance - (gasPrice * (gasLimit + 2));
+				console.log("total balance = " + totalBalance);
+				console.log("gasPrice = " + gasPrice);
+				console.log("gasLimit = " + gasLimit);
+				console.log("sendAllVal = " + sendAllValue);
+				if (sendAllValue > 0) {
+					value = sendAllValue;
+				}
+			}
+		}
+
+		let txParams = {
+			nonce,
+			gasPrice: "0x" + gasPrice.toString(16),
+			gasLimit: "0x" + gasLimit.toString(16),
+			to,
+			value: value,
+			data,
+			chainId: Settings.chainId
+		};
 
 		const tx = new Tx(txParams);
 		tx.sign(getPrivateKey(fromId));
@@ -198,7 +262,7 @@ function sendRawTransaction(fromId, to, wei, unit, message, callback) {
 			let checkAddress = '0x' + tx.getSenderAddress().toString('hex');
 			if (address == checkAddress) {
 				console.log("rawTx = " + serializedTx.toString('hex'));
-				callback(null, "0x" + serializedTx.toString('hex'));
+				callback(null, "0x" + serializedTx.toString('hex'), value);
 			} else {
 				callback({error: true, message: 'FAIL to verify'}, null);
 			}
@@ -582,7 +646,7 @@ bot.on('message',async message => {
 
 				web3.eth.getBalance(address, (error,result) => {
 					if (!error) {
-						let balance = (result/Math.pow(10, 18)).toFixed(3);
+						let balance = (result/Math.pow(10, 18)).toFixed(6);
 						let icon = ':trophy:';
 						if (balance == 0) {
 							icon = ':hatching_chick:';
