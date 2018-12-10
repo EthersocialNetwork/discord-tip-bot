@@ -12,6 +12,7 @@ const Tx = require("ethereumjs-tx");
 const fs = require("fs");
 const Settings = require("./config.json");
 const price = require("./price.js");
+const Games = require("./games.js");
 
 const ERC20ABI = [{"constant":true,"inputs":[],"name":"name","outputs":[{"name":"","type":"string"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"name":"spender","type":"address"},{"name":"tokens","type":"uint256"}],"name":"approve","outputs":[{"name":"success","type":"bool"}],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":true,"inputs":[],"name":"totalSupply","outputs":[{"name":"","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"name":"from","type":"address"},{"name":"to","type":"address"},{"name":"tokens","type":"uint256"}],"name":"transferFrom","outputs":[{"name":"success","type":"bool"}],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":true,"inputs":[],"name":"decimals","outputs":[{"name":"","type":"uint8"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":true,"inputs":[],"name":"_totalSupply","outputs":[{"name":"","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":true,"inputs":[{"name":"tokenOwner","type":"address"}],"name":"balanceOf","outputs":[{"name":"balance","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[],"name":"acceptOwnership","outputs":[],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":true,"inputs":[],"name":"owner","outputs":[{"name":"","type":"address"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":true,"inputs":[],"name":"symbol","outputs":[{"name":"","type":"string"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"name":"to","type":"address"},{"name":"tokens","type":"uint256"}],"name":"transfer","outputs":[{"name":"success","type":"bool"}],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":false,"inputs":[{"name":"spender","type":"address"},{"name":"tokens","type":"uint256"},{"name":"data","type":"bytes"}],"name":"approveAndCall","outputs":[{"name":"success","type":"bool"}],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":true,"inputs":[],"name":"newOwner","outputs":[{"name":"","type":"address"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"name":"tokenAddress","type":"address"},{"name":"tokens","type":"uint256"}],"name":"transferAnyERC20Token","outputs":[{"name":"success","type":"bool"}],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":true,"inputs":[{"name":"tokenOwner","type":"address"},{"name":"spender","type":"address"}],"name":"allowance","outputs":[{"name":"remaining","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"name":"_newOwner","type":"address"}],"name":"transferOwnership","outputs":[],"payable":false,"stateMutability":"nonpayable","type":"function"},{"inputs":[],"payable":false,"stateMutability":"nonpayable","type":"constructor"},{"payable":true,"stateMutability":"payable","type":"fallback"},{"anonymous":false,"inputs":[{"indexed":true,"name":"_from","type":"address"},{"indexed":true,"name":"_to","type":"address"}],"name":"OwnershipTransferred","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"name":"from","type":"address"},{"indexed":true,"name":"to","type":"address"},{"indexed":false,"name":"tokens","type":"uint256"}],"name":"Transfer","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"name":"tokenOwner","type":"address"},{"indexed":true,"name":"spender","type":"address"},{"indexed":false,"name":"tokens","type":"uint256"}],"name":"Approval","type":"event"}];
 
@@ -103,12 +104,8 @@ bot.on('ready', ()=>{
 // show admin wallet
 showAdminWallet();
 
-function sendCoins(fromId, toId, wei, unit, message, name) {
+function sendCoins(fromId, toId, val, unit, message, name) {
 	var users = getJson('data/users.json');
-
-	if (wei < Settings.etherMin * Math.pow(10, 18)) {
-		return message.channel.send("Too small amount. minimal amount is " + Settings.etherMin);
-	}
 
 	console.log("sendCoins >> fromId = " + fromId + " / toId = " + toId);
 	if (typeof fromId === 'number') {
@@ -121,7 +118,7 @@ function sendCoins(fromId, toId, wei, unit, message, name) {
 		}
 		console.log("sendCoins >> toId = " + toId + " / toAddress = " + toAddress);
 
-		sendRawTransaction(fromId, toAddress, wei, unit, message, function(err, rawTx, sendAllWei) {
+		sendRawTransaction(fromId, toAddress, val, unit, message, function(err, rawTx, sendAllWei) {
 			if (err) {
 				message.channel.send("Fail to send to " + name);
 				return;
@@ -132,12 +129,12 @@ function sendCoins(fromId, toId, wei, unit, message, name) {
 					message.channel.send("Fail to send to " + name + ": " + err);
 					return;
 				}
-				message.channel.send(":tada: <@" + message.author.id + "> sent tip.\nTX hash: `" + hash + "`");
+				message.channel.send(":tada: <@" + message.author.id + "> sent **" + val + "** " + unit + " tip.\nTX hash: `" + hash + "`");
 				if (typeof name != "undefined") {
 					let toUser = bot.users.find('username', name);
 					if (toUser) {
-						var val = wei / 1e18;
 						if (sendAllWei) {
+							// val = total - gas
 							val = sendAllWei / 1e18;
 						}
 						toUser.send(":tada: Hi, you are lucky! <@" + message.author.id + "> sent **" + val + "** " + unit + " tip to you.\nTX hash: `" + hash + "`");
@@ -168,7 +165,7 @@ function getTokenBalance(address, unit, message) {
 	});
 }
 
-function sendRawTransaction(fromId, to, wei, unit, message, callback) {
+function sendRawTransaction(fromId, to, amount, unit, message, cb) {
 	let address = getAddress(fromId);
 
 	var gasPrice = 2000000000; // 2,000,000,000 0x77359400
@@ -177,6 +174,38 @@ function sendRawTransaction(fromId, to, wei, unit, message, callback) {
 	// gasPrice: "0x0861c46800", // 0x4e3b29200 36,000,000,000
 	var noNonce;
 	var totalBalance;
+
+	let wei;
+	var decimals = 18;
+	var divisor = Math.pow(10, decimals);
+	if (unit !== Settings.etherUnit) {
+		divisor = KnownTokenDecimalDivisors[unit];
+	}
+	if (amount <= 100) {
+		if (typeof decimals === 'object') {
+			var bamount = new BigNumber(amount);
+			wei = bamount.times(divisor).toString(10);
+		} else {
+			wei = amount * divisor;
+		}
+		if (wei < Settings.etherMin * Math.pow(10, decimals)) {
+			return message.channel.send("Too small amount. minimal amount is " + Settings.etherMin);
+		}
+	} else {
+		var bn = new web3.utils.BN(amount).toString(10);
+		if (decimals == 18) {
+			// normal case
+			wei = web3.utils(bn, "ether");
+		} else {
+			// decimals != 18 case
+			var bamount = new BigNumber(amount);
+			wei = bamount.times(divisor).toString(10);
+		}
+	}
+	console.log('decimals = ', decimals);
+	console.log('bamount = ', bamount);
+	console.log('amount = ', amount);
+	console.log('wei = ', wei);
 
 	async.waterfall([
 	function(callback) {
@@ -230,22 +259,26 @@ function sendRawTransaction(fromId, to, wei, unit, message, callback) {
 			if (value == totalBalance) {
 				sendAll = true;
 			} else {
-				var diff = totalBalance - value;
-				diff = diff < 0 ? -diff : diff;
-				if (diff < 800000000000) {
+				var total = new BigNumber(totalBalance);
+				var v = new BigNumber(value);
+				var diff = total.minus(v).abs();
+				if (diff.comparedTo(800000000000) < 0) {
 					// almost same
 					sendAll = true;
 				}
 			}
 
 			if (sendAll) {
-				var sendAllValue = totalBalance - (gasPrice * (gasLimit + 2));
+				var total = new BigNumber(totalBalance);
+				var gas = gasPrice * (gasLimit + 2);
+				var sendAllValue = total.minus(gas);
+				// sendAllValue = totalBalance - (gasPrice * (gasLimit + 2));
 				console.log("total balance = " + totalBalance);
 				console.log("gasPrice = " + gasPrice);
 				console.log("gasLimit = " + gasLimit);
 				console.log("sendAllVal = " + sendAllValue);
-				if (sendAllValue > 0) {
-					value = sendAllValue;
+				if (sendAllValue.comparedTo(0) > 0) {
+					value = sendAllValue.toString(10);
 				}
 			}
 		}
@@ -270,13 +303,13 @@ function sendRawTransaction(fromId, to, wei, unit, message, callback) {
 			let checkAddress = '0x' + tx.getSenderAddress().toString('hex');
 			if (address == checkAddress) {
 				console.log("rawTx = " + serializedTx.toString('hex'));
-				callback(null, "0x" + serializedTx.toString('hex'), value);
+				cb(null, "0x" + serializedTx.toString('hex'), sendAll ? value : null);
 			} else {
-				callback({error: true, message: 'FAIL to verify'}, null);
+				cb({error: true, message: 'FAIL to verify'}, null);
 			}
 		} else {
 			console.log('FAIL to verify');
-			callback({error: true, message: 'FAIL to verify'}, null);
+			cb({error: true, message: 'FAIL to verify'}, null);
 		}
 	});
 }
@@ -297,7 +330,7 @@ function raining(amount,message) {
 	}
 	// if use wrong amount (string or something)
 	var camount = amount / Object.keys(latest).length;
-	var weiAmount = camount * Math.pow(10, 18);
+	var weiAmount = camount * Math.pow(10, 18); // FIXME
 
 	message.channel.send("It just **rained** on **" + Object.keys(latest).length + "** users. Check pm's." );
 
@@ -306,7 +339,7 @@ function raining(amount,message) {
 			let name = addresses[address];
 			//sendCoins(address, weiAmount, message, name);
 			// FIXME
-			sendCoins(fromId, toId, weiAmount, message, username);
+			sendCoins(fromId, toId, amount, message, username);
 		}
 	}
 	// main function
@@ -394,7 +427,7 @@ function getUser(username, bot) {
 }
 
 var prefixPrefix = prefix[0];
-var allCommands = ['balance', 'getaddress', 'tx', 'send', 'withdraw', 'register', 'checkRegister', 'list', 'help'];
+var allCommands = ['balance', 'getaddress', 'tx', 'send', 'withdraw', 'register', 'checkRegister', 'list', 'help', 'bet', 'tokens'];
 var dmCommands = ['balance', 'getaddress', 'tx', 'help'];
 
 var allowedCommands = allCommands.map(function(cmd) { return prefix + cmd; });
@@ -453,19 +486,93 @@ bot.on('message',async message => {
 		if (!amount) {
 			return message.channel.send("Error - you've entered wrong amount.");
 		}
-		if (amount > Settings.etherMax) {
-			return message.channel.send("Error - too much amount of " + unit + ".");
+		if (unit === Settings.etherUnit) {
+			if (amount > Settings.etherMax) {
+				return message.channel.send("Error - too much amount of " + unit + ".");
+			}
+		} else {
+			if (amount > Settings.etherMax * 100) {
+				return message.channel.send("Error - too much amount of " + unit + ".");
+			}
 		}
 
-		let weiAmount = amount * Math.pow(10, 18);
 		let data = getJson('data/users.json');
 		if (data[author] && web3.utils.isAddress(address)) {
 			var id = data[author].uid;
 			message.channel.send("You are trying to withdraw " + amount + " " + unit + " to `" + address + "`");
 
-			sendCoins(id, address, weiAmount, unit, message, address);
+			sendCoins(id, address, amount, unit, message, address);
 		} else {
 			message.channel.send("You are not registered.");
+		}
+	}
+
+	// mini games
+	if ((args[0] == prefix + "bet") && args[1]) {
+		let author = message.author.id;
+		let users = getJson('data/users.json');
+		let fromId, toId;
+
+		console.log(args[0], args[1]);
+		let test = args[2] === 'test' ? true : false;
+
+		let userSide = args[1].toLowerCase();
+		if (userSide === 'dice') {
+			let totalBot = 0;
+			let totalUser = 0;
+			while (totalBot == totalUser) {
+				let botDice = Games.dice();
+				let userDice = Games.dice();
+				totalBot += botDice;
+				totalUser += userDice;
+			}
+			let botName = "@" + Settings.botName;
+			let tmp = bot.users.find('username', Settings.botName);
+			if (tmp) {
+				botName = "<@" + tmp.id + ">";
+			}
+			let msg = "**You**: " + totalUser + "\n" + botName + ": " + totalBot + "\n\n";
+			if (totalUser > totalBot) {
+				return message.channel.send(msg + ":trophy: **<@" + author + "> WIN** :game_die:");
+			} else {
+				return message.channel.send(msg + "**" + botName + " WINS** :game_die:");
+			}
+		} else if (userSide == "even" || userSide == "odd") {
+			let botSide = Games.evenOdd();
+			let msg = "";
+			if (botSide == "even") {
+				msg = ":two:\n\n";
+			} else {
+				msg = ":one:\n\n";
+			}
+			let botName = "@" + Settings.botName;
+			let tmp = bot.users.find('username', Settings.botName);
+			if (tmp) {
+				botName = "<@" + tmp.id + ">";
+			}
+			if (userSide === botSide) {
+				return message.channel.send(msg + ":trophy: **<@" + author + "> WIN**");
+			} else {
+				return message.channel.send(msg + "**" + botName + " WINS**");
+			}
+		} else if (userSide == "red" || userSide == "black") {
+			let botSide = Games.redBlack();
+			let msg = "";
+			if (botSide == "red") {
+				msg = ":hearts:          RED          :diamonds:\n\n";
+			} else {
+				msg = ":spades:          BLACK          :clubs:\n\n";
+			}
+			let botName = "@" + Settings.botName;
+			let tmp = bot.users.find('username', Settings.botName);
+			if (tmp) {
+				botName = "<@" + tmp.id + ">";
+			}
+			if (userSide === botSide) {
+				return message.channel.send(msg + ":trophy: **<@" + author + "> WIN**");
+			} else {
+				return message.channel.send(msg + "**" + botName + " WINS**");
+			}
 		}
 	}
 
@@ -552,7 +659,17 @@ bot.on('message',async message => {
 		}
 
 		// if use wrong amount (string or something)
-		if (!amount || amount > Settings.etherMax) return message.channel.send("Error - you've entered wrong amount.");
+		if (!amount) return message.channel.send("Error - you've entered wrong amount.");
+
+		if (unit === Settings.etherUnit) {
+			if (amount > Settings.etherMax) {
+				return message.channel.send("Error - too much amount of " + unit + ".");
+			}
+		} else {
+			if (amount > Settings.etherMax * 100) {
+				return message.channel.send("Error - too much amount of " + unit + ".");
+			}
+		}
 
 		var msg;
 		if (web3.utils.isAddress(username)) {
@@ -581,10 +698,18 @@ bot.on('message',async message => {
 			msg = "You are trying to send " + amount + " " + unit + " to <@" + toUser.id + ">";
 		}
 
-		let weiAmount = amount * Math.pow(10, 18);
 		message.channel.send(msg);
 
-		sendCoins(fromId, toId, weiAmount, unit, message, username);
+		sendCoins(fromId, toId, amount, unit, message, username);
+	}
+
+	if (args[0] == prefix + "tokens") {
+		var tokenInfo = KnownTokenList.map((token)=> {
+			var sym = token.symbol.toUpperCase();
+			var addr = token.address;
+			return `**${sym}**: address: \`${addr}\``;
+		});
+		return message.channel.send("Known Token list\n" + tokenInfo.join("\n"));
 	}
 
 	if (message.content.startsWith(prefix + "Xrain")) {
@@ -619,10 +744,10 @@ bot.on('message',async message => {
 		let price = getJson('data/usdprice.txt');
 		let author = message.author.id;
 		let address, unit;
+		let hasArg = args[1] ? true : false;
 
 		// /balance : show my balance
 		// /balance DDT => show balanceOf() DDT token
-		// /balance @user : admin only
 		while (args[1]) {
 			if (!address && web3.utils.isAddress(args[1])) {
 				address = args[1];
@@ -632,17 +757,21 @@ bot.on('message',async message => {
 				var user = getUser(args[1], bot);
 				if (user) {
 					var i = getRegisterUserInfo(user);
-					if (i !== null) {
+					if (i) {
 						address = getAddress(i.uid);
 					}
-				} else {
-					return message.channel.send("<@" + user.id + "> is not registerd.");
+				} else if (!unit) {
+					return message.channel.send("not recognized argument `" + args[1] + "`.");
 				}
 			} else {
-				return message.channel.send("not recognized argument " + args[1] + ".");
+				return message.channel.send("not recognized argument `" + args[1] + "`.");
 			}
 
 			args.shift();
+		}
+
+		if (hasArg && !address && !unit) {
+			return message.channel.send("unable to find adddress for " + args[1] + ".");
 		}
 
 		if (address == null) {
@@ -801,6 +930,7 @@ bot.on('message',async message => {
 			//"**"+prefix+"register** *<address>*  - saves user address and name to db. \n"+
 			"**" + prefix + space + "register** - register user to db.\n" +
 			"**" + prefix + space + "checkRegister** - find whether you're registered or not.\n" +
+			"**" + prefix + space + "tokens** - shows available token list.\n" +
 			"**" + prefix + space + "list** - shows number of registered users.");
 	}
 })
