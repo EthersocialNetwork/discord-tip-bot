@@ -104,7 +104,7 @@ bot.on('ready', ()=>{
 // show admin wallet
 showAdminWallet();
 
-function sendCoins(fromId, toId, val, unit, message, name) {
+function sendCoins(fromId, toId, val, unit, text, message, name) {
 	var users = getJson('data/users.json');
 
 	console.log("sendCoins >> fromId = " + fromId + " / toId = " + toId);
@@ -118,7 +118,7 @@ function sendCoins(fromId, toId, val, unit, message, name) {
 		}
 		console.log("sendCoins >> toId = " + toId + " / toAddress = " + toAddress);
 
-		sendRawTransaction(fromId, toAddress, val, unit, message, function(err, rawTx, sendAllWei) {
+		sendRawTransaction(fromId, toAddress, val, unit, text, message, function(err, rawTx, sendAllWei) {
 			if (err) {
 				message.channel.send("Fail to send to " + name);
 				return;
@@ -165,7 +165,7 @@ function getTokenBalance(address, unit, message) {
 	});
 }
 
-function sendRawTransaction(fromId, to, amount, unit, message, cb) {
+function sendRawTransaction(fromId, to, amount, unit, text, message, cb) {
 	let address = getAddress(fromId);
 
 	var gasPrice = 2000000000; // 2,000,000,000 0x77359400
@@ -206,6 +206,7 @@ function sendRawTransaction(fromId, to, amount, unit, message, cb) {
 	console.log('bamount = ', bamount);
 	console.log('amount = ', amount);
 	console.log('wei = ', wei);
+	console.log('text = ', text);
 
 	async.waterfall([
 	function(callback) {
@@ -236,6 +237,7 @@ function sendRawTransaction(fromId, to, amount, unit, message, cb) {
 		}
 		//gasPrice = gasprice > gasPrice ? gasprice : gasPrice;
 		console.log("returned gasPrice = " + gasprice);
+		console.log("assume gasPrice = " + gasPrice);
 		totalBalance = balance;
 
 		let data = '0x';
@@ -266,6 +268,17 @@ function sendRawTransaction(fromId, to, amount, unit, message, cb) {
 					// almost same
 					sendAll = true;
 				}
+			}
+
+			// have text message?
+			if (text) {
+				var msg = Buffer.from(text);
+				var len = msg.length;
+				var gas = len * 68;
+				gasLimit += gas;
+				console.log('additional gaslimit for text message = ', gas, ' len = ', len);
+
+				data = '0x' + msg.toString('hex');
 			}
 
 			if (sendAll) {
@@ -339,7 +352,7 @@ function raining(amount,message) {
 			let name = addresses[address];
 			//sendCoins(address, weiAmount, message, name);
 			// FIXME
-			sendCoins(fromId, toId, amount, message, username);
+			sendCoins(fromId, toId, amount, text, message, username);
 		}
 	}
 	// main function
@@ -472,14 +485,24 @@ bot.on('message',async message => {
 
 		let address = args[1];
 		let amount = Number(args[2]);
-		let unit = args[3] || Settings.ticker;
-
-		if (unit !== Settings.ticker) {
+		let unit, text;
+		if (args[3]) {
 			// check valid token name
-			if (!KnownTokenInfo[unit]) {
-				// not found. default ticker
+			if (args[3] == Settings.ticker || KnownTokenInfo[args[3]]) {
+				unit = args[3];
+				args.shift();
+			} else {
 				unit = Settings.etherUnit;
 			}
+		} else {
+			unit = Settings.etherUnit;
+		}
+		// check additional message
+		if (args[3]) {
+			var remains = args.slice(3);
+			text = remains.join(' ');
+			text = text.replace(/%20/g, ' ');
+			text = text.replace(/\\n/g, "\n");
 		}
 
 		// if use wrong amount (string or something)
@@ -501,7 +524,7 @@ bot.on('message',async message => {
 			var id = data[author].uid;
 			message.channel.send("You are trying to withdraw " + amount + " " + unit + " to `" + address + "`");
 
-			sendCoins(id, address, amount, unit, message, address);
+			sendCoins(id, address, amount, unit, text, message, address);
 		} else {
 			message.channel.send("You are not registered.");
 		}
@@ -583,7 +606,26 @@ bot.on('message',async message => {
 
 		let username = args[1];
 		let amount = args[2];
-		let unit = args[3] || Settings.ticker;
+		let unit, text;
+		if (args[3]) {
+			// check valid token name
+			if (args[3] == Settings.ticker || KnownTokenInfo[args[3]]) {
+				unit = args[3];
+				args.shift();
+			} else {
+				unit = Settings.etherUnit;
+			}
+		}
+
+		if (args[3]) {
+			// check additional message
+			var remains = args.splice(3);
+			text = remains.join(' ');
+			text = text.replace(/%20/g, ' ');
+			text = text.replace(/\\n/g, "\n");
+		} else {
+			unit = Settings.etherUnit;
+		}
 
 		let isAdmin = message.member && message.member.hasPermission('ADMINISTRATOR');
 
@@ -650,14 +692,6 @@ bot.on('message',async message => {
 			}
 		}
 
-		if (unit !== Settings.ticker) {
-			// check valid token name
-			if (!KnownTokenInfo[unit]) {
-				// not found. default ticker
-				unit = Settings.etherUnit;
-			}
-		}
-
 		// if use wrong amount (string or something)
 		if (!amount) return message.channel.send("Error - you've entered wrong amount.");
 
@@ -700,7 +734,7 @@ bot.on('message',async message => {
 
 		message.channel.send(msg);
 
-		sendCoins(fromId, toId, amount, unit, message, username);
+		sendCoins(fromId, toId, amount, unit, text, message, username);
 	}
 
 	if (args[0] == prefix + "tokens") {
@@ -898,7 +932,15 @@ bot.on('message',async message => {
 			if (!tx.blockNumber) {
 				icon = ':sleeping:';
 			}
-			message.channel.send(`${icon} - TX \`${tx.hash}\`, from: \`${tx.from}\`, to: \`${tx.to}\` at blockNumber \`${tx.blockNumber}\`.`);
+			var str = tx.input;
+			var msg = "";
+			if (str != '0x') {
+				var txt = str.replace(/^0x/, '');
+				txt = Buffer.from(txt, 'hex');
+				str = txt.toString();
+				msg = `\ndata: \`${str}\``;
+			}
+			message.channel.send(`${icon} - TX \`${tx.hash}\`, from: \`${tx.from}\`, to: \`${tx.to}\` at blockNumber \`${tx.blockNumber}\`.${msg}`);
 		});
 	}
 
