@@ -545,7 +545,7 @@ bot.on('message',async message => {
 			} else {
 				unit = Settings.etherUnit;
 			}
-		} else {
+		} else if (!unit) {
 			unit = Settings.etherUnit;
 		}
 		// check additional message
@@ -674,7 +674,7 @@ bot.on('message',async message => {
 			text = remains.join(' ');
 			text = text.replace(/%20/g, ' ');
 			text = text.replace(/\\n/g, "\n");
-		} else {
+		} else if (!unit) {
 			unit = Settings.etherUnit;
 		}
 
@@ -986,10 +986,14 @@ bot.on('message',async message => {
 			var val = new BigNumber(tx.value).dividedBy(1e18);
 			var msg = "";
 			if (str != '0x') {
-				var txt = str.replace(/^0x/, '');
-				txt = Buffer.from(txt, 'hex');
-				str = txt.toString();
-				msg = `\ndata: \`${str}\``;
+				var bytecode = web3.eth.getCode(tx.to);
+				if (bytecode == "0x") {
+					// decode string data
+					var txt = str.replace(/^0x/, '');
+					txt = Buffer.from(txt, 'hex');
+					str = txt.toString();
+					msg = `\ndata: \`${str}\``;
+				}
 			}
 			message.channel.send(`${icon} - TXID \`${tx.hash}\`\nvalue: \`${val}\` ${Settings.ticker}, from: \`${tx.from}\`, to: \`${tx.to}\` at blockNumber \`${tx.blockNumber}\`.${msg}`);
 		});
