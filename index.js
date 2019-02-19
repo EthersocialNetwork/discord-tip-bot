@@ -181,7 +181,7 @@ function sendRawTransaction(fromId, to, amount, unit, text, message, cb) {
 	if (unit !== Settings.etherUnit) {
 		divisor = KnownTokenDecimalDivisors[unit];
 	}
-	if (amount <= 100) {
+	if (amount <= Settings.etherMax) {
 		if (typeof decimals === 'object') {
 			var bamount = new BigNumber(amount);
 			wei = bamount.times(divisor).toString(10);
