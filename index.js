@@ -136,7 +136,13 @@ function sendCoins(type, fromId, toId, val, unit, text, message, name) {
 					message.channel.send("Fail to send to " + name + ": " + err);
 					return;
 				}
-				message.channel.send(":tada: <@" + message.author.id + "> sent **" + val + "** " + unit + " tip.\nTX hash: `" + hash + "`");
+				var pending = true;
+				if (typeof hash === "object") {
+					pending = hash.status != "0x1";
+					hash = hash.transactionHash;
+				}
+				var status = pending ? "Unknown" : "Success";
+				message.channel.send(":tada: <@" + message.author.id + "> sent **" + val + "** " + unit + " tip.\nTXID: `" + hash + "`, Status: " + status);
 				if (typeof name != "undefined") {
 					let toUser = bot.users.find('username', name);
 					if (toUser) {
@@ -144,9 +150,9 @@ function sendCoins(type, fromId, toId, val, unit, text, message, name) {
 							// val = total - gas
 							val = sendAllWei / 1e18;
 						}
-						toUser.send(":tada: Hi, you are lucky! <@" + message.author.id + "> sent **" + val + "** " + unit + " tip to you.\nTX hash: `" + hash + "`");
+						toUser.send(":tada: Hi, you are lucky! <@" + message.author.id + "> sent **" + val + "** " + unit + " tip to you.\nTXID: `" + hash + "`, Status: " + status);
 					} else {
-						message.author.send("Check TX hash: `" + hash + "`");
+						message.author.send("Check TXID: `" + hash + "`");
 					}
 				}
 			});
