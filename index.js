@@ -775,7 +775,6 @@ bot.on('message',async message => {
 	}
 
 	if (args[0] == prefix + "balance") {
-		let price = getJson('data/usdprice.txt');
 		let author = message.author.id;
 		let address, unit;
 		let hasArg = args[1] ? true : false;
