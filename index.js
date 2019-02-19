@@ -45,7 +45,7 @@ function getHdPath(hdkey, type, userId) {
 	var tmp = Settings.hdPath.split('/');
 	// remove last element
 	tmp.splice(4,1);
-	if (type !== 0 || type !== 1) {
+	if (!Number.isInteger(type)) {
 		type = 0;
 	}
 	userId = parseInt(userId);
@@ -63,22 +63,28 @@ function _getAddress(hdkey) {
 	return '0x' + addressBuffer.toString('hex');
 }
 
-function getAddress(uid) {
+function getAddress(type, uid) {
+	if (!Number.isInteger(type)) {
+		type = 0;
+	}
 	const hdkey = prepareHDKey();
-	const hdPath = getHdPath(hdkey, 0, uid); // type == 0 : external, type == 1 : internal
+	const hdPath = getHdPath(hdkey, type, uid); // type == 0 : external, type == 1 : internal
 	const hd = hdkey.derive(hdPath);
 	return _getAddress(hd);
 }
 
-function getPrivateKey(uid) {
+function getPrivateKey(type, uid) {
+	if (!Number.isInteger(type)) {
+		type = 0;
+	}
 	const hdkey = prepareHDKey();
-	const hdPath = getHdPath(hdkey, 0, uid); // type == 0 : external, type == 1 : internal
+	const hdPath = getHdPath(hdkey, type, uid); // type == 0 : external, type == 1 : internal
 	const hd = hdkey.derive(hdPath);
 	return hd._privateKey;
 }
 
 async function showAdminWallet() {
-	const toAddress = getAddress(0);
+	const toAddress = getAddress(0, 0);
 	let balance = await web3.eth.getBalance(toAddress) / Math.pow(10, 18);
 	console.log("Admin wallet = " + toAddress + ": " + balance + " " + Settings.ticker);
 }
@@ -105,21 +111,21 @@ bot.on('ready', ()=>{
 // show admin wallet
 showAdminWallet();
 
-function sendCoins(fromId, toId, val, unit, text, message, name) {
+function sendCoins(type, fromId, toId, val, unit, text, message, name) {
 	var users = getJson('data/users.json');
 
 	console.log("sendCoins >> fromId = " + fromId + " / toId = " + toId);
 	if (typeof fromId === 'number') {
 		let toAddress;
 		if (typeof toId === 'number') {
-			toAddress = getAddress(toId);
+			toAddress = getAddress(type, toId);
 		} else {
 			// normal address
 			toAddress = toId;
 		}
 		console.log("sendCoins >> toId = " + toId + " / toAddress = " + toAddress);
 
-		sendRawTransaction(fromId, toAddress, val, unit, text, message, function(err, rawTx, sendAllWei) {
+		sendRawTransaction(type, fromId, toAddress, val, unit, text, message, function(err, rawTx, sendAllWei) {
 			if (err) {
 				message.channel.send("Fail to send to " + name);
 				return;
@@ -166,8 +172,8 @@ function getTokenBalance(address, unit, message) {
 	});
 }
 
-function sendRawTransaction(fromId, to, amount, unit, text, message, cb) {
-	let address = getAddress(fromId);
+function sendRawTransaction(type, fromId, to, amount, unit, text, message, cb) {
+	let address = getAddress(type, fromId);
 
 	var gasPrice = 2000000000; // 2,000,000,000 0x77359400
 	// minimal gas price ?        2,100,000,000 0x4e3b29200
@@ -308,7 +314,7 @@ function sendRawTransaction(fromId, to, amount, unit, text, message, cb) {
 		};
 
 		const tx = new Tx(txParams);
-		tx.sign(getPrivateKey(fromId));
+		tx.sign(getPrivateKey(type, fromId));
 		const serializedTx = tx.serialize();
 
 		var ret = tx.verifySignature();
@@ -328,7 +334,7 @@ function sendRawTransaction(fromId, to, amount, unit, text, message, cb) {
 	});
 }
 
-function raining(amount,message) {
+function raining(type, amount,message) {
 	// registered users
 	var data = getJson('data/users.json');
 	// online users
@@ -353,7 +359,7 @@ function raining(amount,message) {
 			let name = addresses[address];
 			//sendCoins(address, weiAmount, message, name);
 			// FIXME
-			sendCoins(fromId, toId, amount, text, message, username);
+			sendCoins(type, fromId, toId, amount, text, message, username);
 		}
 	}
 	// main function
@@ -426,7 +432,10 @@ function getRegisterUserInfo(user) {
 	return null;
 }
 
-async function register(id, message) {
+async function register(type, id, message) {
+	if (!Number.isInteger(type)) {
+		type = 0;
+	}
 	var data = getJson('data/users.json');
 	var current = data["@id"];
 	var user = bot.users.find('id', id);
@@ -439,7 +448,7 @@ async function register(id, message) {
 		data[id] = { uid: newId, name: user.username };
 		data["@id"] = newId;
 
-		let address = getAddress(newId);
+		let address = getAddress(type, newId);
 
 		await fs.writeFileSync(Settings.path, JSON.stringify(data, null, 2), (err) => {
 			if (err) throw err;
@@ -450,7 +459,7 @@ async function register(id, message) {
 		return newId;
 	} else {
 		var user = data[id];
-		let address = getAddress(user.uid);
+		let address = getAddress(type, user.uid);
 
 		message.channel.send("<@" + id + "> is already registered. address is `" + address + "`");
 		return user.uid;
@@ -509,6 +518,7 @@ bot.on('message',async message => {
 	}
 
 	var message = message;
+	var internalType = 0;
 
 	if (message.channel.type === "dm" &&
 			args[0].indexOf(allowedCommands) > -1 && args[0].indexOf(allowedDmCommands) === -1) {
@@ -559,7 +569,7 @@ bot.on('message',async message => {
 			var id = data[author].uid;
 			message.channel.send("You are trying to withdraw " + amount + " " + unit + " to `" + address + "`");
 
-			sendCoins(id, address, amount, unit, text, message, address);
+			sendCoins(internalType, id, address, amount, unit, text, message, address);
 		} else {
 			message.channel.send("You are not registered.");
 		}
@@ -668,7 +678,7 @@ bot.on('message',async message => {
 			if (users[author]) {
 				fromId = users[author].uid;
 			} else if (message.channel.type !== 'dm' && Settings.autoRegister) {
-				return register(author, message);
+				return register(internalType, author, message);
 			} else {
 				return message.channel.send("You are not registered user.");
 			}
@@ -749,7 +759,7 @@ bot.on('message',async message => {
 			let toUser = getUser(username, bot);
 			if (toUser && !toUser.bot) {
 				if (!users[toUser.id] && message.channel.type !== 'dm' && Settings.autoRegister) {
-					toId = await register(toUser.id, message);
+					toId = await register(internalType, toUser.id, message);
 					username = toUser.username;
 				}
 				if (!toId && users[toUser.id]) {
@@ -769,7 +779,7 @@ bot.on('message',async message => {
 
 		message.channel.send(msg);
 
-		sendCoins(fromId, toId, amount, unit, text, message, username);
+		sendCoins(internalType, fromId, toId, amount, unit, text, message, username);
 	}
 
 	if (args[0] == prefix + "tokens") {
@@ -826,7 +836,7 @@ bot.on('message',async message => {
 				if (user) {
 					var i = getRegisterUserInfo(user);
 					if (i) {
-						address = getAddress(i.uid);
+						address = getAddress(internalType, i.uid);
 					}
 				} else if (!unit) {
 					return message.channel.send("not recognized argument `" + args[1] + "`.");
@@ -847,7 +857,7 @@ bot.on('message',async message => {
 			let data = getJson('data/users.json');
 			if (data[author]) {
 				var user = data[author];
-				let address = getAddress(user.uid);
+				let address = getAddress(internalType, user.uid);
 
 				web3.eth.getBalance(address, (error,result) => {
 					if (!error) {
@@ -911,7 +921,7 @@ bot.on('message',async message => {
 		if (users['@admin']) {
 			let adminId = users['@admin'].uid;
 
-			address = getAddress(adminId);
+			address = getAddress(internalType, adminId);
 		} else {
 			address = Settings.address;
 		}
@@ -927,7 +937,7 @@ bot.on('message',async message => {
 		var author = message.author.id;
 
 		if (true) {
-			register(author, message);
+			register(internalType, author, message);
 		}
 		//var address = args[1];
 		//if (web3.utils.isAddress(args[1])) {
