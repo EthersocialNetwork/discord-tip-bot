@@ -977,6 +977,7 @@ bot.on('message',async message => {
 				icon = ':sleeping:';
 			}
 			var str = tx.input;
+			var val = new BigNumber(tx.value).dividedBy(1e18);
 			var msg = "";
 			if (str != '0x') {
 				var txt = str.replace(/^0x/, '');
@@ -984,7 +985,7 @@ bot.on('message',async message => {
 				str = txt.toString();
 				msg = `\ndata: \`${str}\``;
 			}
-			message.channel.send(`${icon} - TX \`${tx.hash}\`, from: \`${tx.from}\`, to: \`${tx.to}\` at blockNumber \`${tx.blockNumber}\`.${msg}`);
+			message.channel.send(`${icon} - TXID \`${tx.hash}\`\nvalue: \`${val}\` ${Settings.ticker}, from: \`${tx.from}\`, to: \`${tx.to}\` at blockNumber \`${tx.blockNumber}\`.${msg}`);
 		});
 	}
 
