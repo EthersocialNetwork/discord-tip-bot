@@ -144,7 +144,7 @@ function sendCoins(type, fromId, toId, val, unit, text, message, name) {
 				var status = pending ? "Unknown" : "Success";
 				message.channel.send(":tada: <@" + message.author.id + "> sent **" + val + "** " + unit + " tip.\nTXID: `" + hash + "`, Status: " + status);
 				if (typeof name != "undefined") {
-					let toUser = bot.users.find('username', name);
+					let toUser = bot.users.find(x => x.username === name);
 					if (toUser) {
 						if (sendAllWei) {
 							// val = total - gas
@@ -444,7 +444,7 @@ async function register(type, id, message) {
 	}
 	var data = getJson('data/users.json');
 	var current = data["@id"];
-	var user = bot.users.find('id', id);
+	var user = bot.users.find(x => x.id === id);
 	if (!user) {
 		message.channel.send("<@" + id + "> user not found");
 		return null;
@@ -482,9 +482,9 @@ function getUser(username, bot) {
 			id = username.substr(2, username.length - 3);
 		}
 		console.log("userId = " + id + " " + username);
-		user = bot.users.find('id', id);
+		user = bot.users.find(x => x.id === id);
 	} else {
-		user = bot.users.find('username', username);
+		user = bot.users.find(x => x.username === username);
 	}
 	return user;
 }
@@ -601,7 +601,7 @@ bot.on('message',async message => {
 				totalUser += userDice;
 			}
 			let botName = "@" + Settings.botName;
-			let tmp = bot.users.find('username', Settings.botName);
+			let tmp = bot.users.find(x => x.username === Settings.botName);
 			if (tmp) {
 				botName = "<@" + tmp.id + ">";
 			}
@@ -620,7 +620,7 @@ bot.on('message',async message => {
 				msg = ":one:\n\n";
 			}
 			let botName = "@" + Settings.botName;
-			let tmp = bot.users.find('username', Settings.botName);
+			let tmp = bot.users.find(x => x.username === Settings.botName);
 			if (tmp) {
 				botName = "<@" + tmp.id + ">";
 			}
@@ -638,7 +638,7 @@ bot.on('message',async message => {
 				msg = ":spades:          BLACK          :clubs:\n\n";
 			}
 			let botName = "@" + Settings.botName;
-			let tmp = bot.users.find('username', Settings.botName);
+			let tmp = bot.users.find(x => x.username === Settings.botName);
 			if (tmp) {
 				botName = "<@" + tmp.id + ">";
 			}
@@ -727,9 +727,9 @@ bot.on('message',async message => {
 					var by;
 					// seek others wallet
 					if (at.match(/^[0-9]+$/)) {
-						by = bot.users.find('id', at);
+						by = bot.users.find(x => x.id === at);
 					} else {
-						by = bot.users.find('username', at);
+						by = bot.users.find(x => x.username === at);
 					}
 					if (users[by.id]) {
 						fromId = users[by.id].uid;
