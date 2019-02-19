@@ -10,6 +10,9 @@ const BigNumber = require('bignumber.js');
 const Util = require('ethereumjs-util')
 const Tx = require("ethereumjs-tx");
 const fs = require("fs");
+const readlineSync = require('readline-sync');
+const crypto = require('crypto');
+
 const Settings = require("./config.json");
 const price = require("./price.js");
 const Games = require("./games.js");
@@ -94,9 +97,7 @@ if (Settings.priceApi) {
 const prefix = Settings.prefix;
 const bot = new Discord.Client({disableEveryone:true});
 
-var web3 = new Web3();
-
-web3.setProvider(new web3.providers.HttpProvider(Settings.rpchost || 'http://localhost:8545'));
+var web3 = new Web3(new Web3.providers.HttpProvider(Settings.rpchost || 'http://localhost:8545'));
 bot.on('ready', ()=>{
 	console.log("Bot is ready for work");
 });
@@ -377,9 +378,43 @@ function getJson(path) {
 	return JSON.parse(fs.readFileSync(path));
 }
 
+function decryptMnemonic(encrypted_file) {
+	if (typeof decryptMnemonic.decrypted !== 'undefined') {
+		return decryptMnemonic.decrypted;
+	}
+	const message = 'Please enter password: ';
+	const options = {
+		hideEchoBack: true,
+		mask: '*'
+	};
+
+	const passwd = readlineSync.question(message, options);
+
+	let encrypted = fs.readFileSync(encrypted_file);
+	encrypted = encrypted.toString().replace(/\n/g, "");
+	encrypted = new Buffer(encrypted, 'base64');
+	encrypted = encrypted.toString('base64');
+
+	const decipher = crypto.createDecipher('aes-256-cbc', passwd);
+	decipher.setAutoPadding(false);
+	let decrypted = decipher.update(encrypted, 'base64', 'utf8');
+	decrypted += decipher.final('utf8');
+
+	// XXX workaround
+	var fixed = decrypted.replace(//g, '');
+	decryptMnemonic.decrypted = fixed;
+
+	return fixed;
+}
+
 function getMnemonic(path) {
-	let mnemonic = fs.readFileSync(path);
-	let decoded = mnemonic.toString();
+	var decoded;
+	if (path.match(/\.enc$/)) {
+		decoded = decryptMnemonic(path);
+	} else {
+		var mnemonics = fs.readFileSync(path);
+		decoded = mnemonics.toString();
+	}
 	return decoded.trim().split(/\s+/g).join(' ');
 }
 

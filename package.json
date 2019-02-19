@@ -10,7 +10,7 @@
   "license": "ISC",
   "dependencies": {
     "async": "^2.6.0",
-    "bignumber.js": "^6.0.0",
+    "bignumber.js": "^7.0.2",
     "bip39": "^2.5.0",
     "bufferutil": "^4.0.0",
     "discord.js": "^11.4.2",
@@ -23,11 +23,13 @@
     "node-hid": "^0.7.3",
     "nonce": "^1.0.4",
     "pg": "^7.4.1",
+    "readline-sync": "^1.4.9",
+    "scrypt": "^6.0.3",
     "sequelize": "^4.37.5",
     "sodium": "^2.0.3",
     "solc": "^0.4.23",
     "sqlite3": "^4.0.0",
     "uws": "^99.0.0",
-    "web3": "^1.0.0-beta.30"
+    "web3": "^1.0.0-beta.46"
   }
 }
