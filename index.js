@@ -496,6 +496,8 @@ var dmCommands = ['balance', 'getaddress', 'tx', 'help'];
 var allowedCommands = allCommands.map(function(cmd) { return prefix + cmd; });
 var allowedDmCommands = allCommands.map(function(cmd) { return prefix + cmd; });
 
+bot.on('error', console.error);
+
 bot.on('message',async message => {
 	if (message.author.bot) return; // ignore bot authors
 
@@ -861,10 +863,16 @@ bot.on('message',async message => {
 		if (address == null) {
 			// show registered address balance
 			let data = getJson('data/users.json');
+			let toId;
 			if (data[author]) {
 				var user = data[author];
-				let address = getAddress(internalType, user.uid);
+				toId = user.uid;
+			} else if (!data[author] && !message.author.bot && message.channel.type !== 'dm' && Settings.autoRegister) {
+				toId = await register(internalType, author, message);
+			}
 
+			if (toId) {
+				let address = getAddress(internalType, toId);
 				web3.eth.getBalance(address, (error,result) => {
 					if (!error) {
 						let balance = (result/Math.pow(10, 18)).toFixed(6);
@@ -896,6 +904,8 @@ bot.on('message',async message => {
 				if (unit && unit != Settings.etherUnit) {
 					getTokenBalance(address, unit, message);
 				}
+			} else {
+				message.channel.send("You are not in the list, use **" + prefix + (prefix.length > 1 ? " " : "") + "register" + "** command first.");
 			}
 		} else if (web3.utils.isAddress(address)) {
 			web3.eth.getBalance(address, (error,result) => {
@@ -1005,7 +1015,7 @@ bot.on('message',async message => {
 		if (Object.keys(data).includes(author)) {
 			message.channel.send("<@"+author + "> already registered.");
 		} else {
-			message.channel.send("You are not in the list, use **" + prefix + register + "** command first.");
+			message.channel.send("You are not in the list, use **" + prefix + (prefix.length > 1 ? " " : "") + "register" + "** command first.");
 		}
 	}
 
