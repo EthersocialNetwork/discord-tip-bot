@@ -997,16 +997,19 @@ bot.on('message',async message => {
 			var val = new BigNumber(tx.value).dividedBy(1e18);
 			var msg = "";
 			if (str != '0x') {
-				var bytecode = web3.eth.getCode(tx.to);
-				if (bytecode == "0x") {
+				web3.eth.getCode(tx.to, function(err, res) {
+					if (err || res != "0x")
+						return;
 					// decode string data
 					var txt = str.replace(/^0x/, '');
 					txt = Buffer.from(txt, 'hex');
 					str = txt.toString();
 					msg = `\ndata: \`${str}\``;
-				}
+					message.channel.send(`${icon} - TXID \`${tx.hash}\`\nvalue: \`${val}\` ${Settings.ticker}, from: \`${tx.from}\`, to: \`${tx.to}\` at blockNumber \`${tx.blockNumber}\`.${msg}`);
+				});
+			} else {
+				message.channel.send(`${icon} - TXID \`${tx.hash}\`\nvalue: \`${val}\` ${Settings.ticker}, from: \`${tx.from}\`, to: \`${tx.to}\` at blockNumber \`${tx.blockNumber}\`.${msg}`);
 			}
-			message.channel.send(`${icon} - TXID \`${tx.hash}\`\nvalue: \`${val}\` ${Settings.ticker}, from: \`${tx.from}\`, to: \`${tx.to}\` at blockNumber \`${tx.blockNumber}\`.${msg}`);
 		});
 	}
 
