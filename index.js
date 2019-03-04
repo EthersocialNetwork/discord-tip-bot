@@ -142,7 +142,8 @@ function sendCoins(type, fromId, toId, val, unit, text, message, name) {
 					hash = hash.transactionHash;
 				}
 				var status = pending ? "Unknown" : "Success";
-				message.channel.send(":tada: <@" + message.author.id + "> sent **" + val + "** " + unit + " tip.\nTXID: `" + hash + "`, Status: " + status);
+				var extra = status == "Success" ? " to `" + toAddress + "`" : "";
+				message.channel.send(":tada: <@" + message.author.id + "> sent **" + val + "** " + unit + " tip" + extra + ".\nTXID: `" + hash + "`, Status: " + status);
 				if (typeof name != "undefined") {
 					let toUser = bot.users.find(x => x.username === name);
 					if (toUser) {
