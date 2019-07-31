@@ -6,7 +6,16 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "",
+  "author": {
+    "name": "dinc",
+    "email": "dinc334@gmail.com"
+  },
+  "contributors": [
+    {
+      "name": "hackmod",
+      "url": "https://github.com/hackmod"
+    }
+  ],
   "license": "ISC",
   "dependencies": {
     "async": "^2.6.0",
