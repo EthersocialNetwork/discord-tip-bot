@@ -24,7 +24,7 @@ Change config.json file.
 
 Run local node with:
 
-	./geth --rpc --unlock "yourAddress" --password pathToFileWithPass
+	./geth --rpc
 Then run bot with:
 	
     node index.js
